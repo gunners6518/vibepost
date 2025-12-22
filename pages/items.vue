@@ -79,7 +79,6 @@
               @change="fetchItems"
               class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
             >
-              <option value="">すべて</option>
               <option value="new">新規</option>
               <option value="drafted">下書き</option>
               <option value="favorite">あとで読む</option>
@@ -313,7 +312,7 @@ const actionLoading = ref<Record<string, boolean>>({})
 const { success, error: showError } = useToast()
 
 const filters = ref({
-  status: '',
+  status: 'new',
   sort: 'published_at',
   search: ''
 })
@@ -363,10 +362,35 @@ const fetchItems = async () => {
       pageSize.value = response.pageSize
     }
   } catch (err: any) {
-    const errorMessage = err.message || 'Failed to fetch items'
-    error.value = errorMessage
-    showError(errorMessage)
-    console.error('Error fetching items:', err)
+    // Extract detailed error information
+    const errorData = err.data || {}
+    console.error('Full error object:', JSON.stringify(err, null, 2))
+    console.error('Error data:', JSON.stringify(errorData, null, 2))
+    
+    const errorMessage = errorData.error || err.message || 'Failed to fetch items'
+    const errorDetails = errorData.details || ''
+    const errorHint = errorData.hint || ''
+    const errorCode = errorData.code || ''
+    
+    // Build detailed error message
+    let fullErrorMessage = `エラー: ${errorMessage}`
+    if (errorCode) fullErrorMessage += `\nコード: ${errorCode}`
+    if (errorDetails) fullErrorMessage += `\n詳細: ${errorDetails}`
+    if (errorHint) fullErrorMessage += `\nヒント: ${errorHint}`
+    
+    // If no detailed info, show the full error data
+    if (!errorDetails && !errorHint && !errorCode && errorData) {
+      fullErrorMessage += `\n\n詳細情報: ${JSON.stringify(errorData, null, 2)}`
+    }
+    
+    error.value = fullErrorMessage
+    showError(fullErrorMessage)
+    console.error('Error fetching items:', {
+      message: err.message,
+      data: err.data,
+      statusCode: err.statusCode,
+      fullError: err
+    })
   } finally {
     loading.value = false
   }

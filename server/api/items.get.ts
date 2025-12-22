@@ -42,40 +42,102 @@ export default defineEventHandler(async (event) => {
   // Get Supabase admin client
   const supabase = getSupabaseAdmin(event)
 
-  // Build query
-  let supabaseQuery = supabase
-    .from('items')
-    .select('*')
+  try {
+    // First, try a simple query to check if table exists and get column info
+    console.log('[items.get.ts] Testing table access...')
+    const { data: testData, error: testError } = await supabase
+      .from('items')
+      .select('id, status, published_at')
+      .limit(1)
+    
+    if (testError) {
+      console.error('[items.get.ts] Test query error:', testError)
+      // If test query fails, the error might give us clues about missing columns
+    } else {
+      console.log('[items.get.ts] Test query successful. Sample data:', testData)
+    }
+    console.log('[items.get.ts] Building query with params:', { status, sort, page, pageSize })
+    
+    // Build query
+    let supabaseQuery = supabase
+      .from('items')
+      .select('*')
 
-  // Apply status filter if provided
-  if (status) {
-    supabaseQuery = supabaseQuery.eq('status', status)
-  }
+    // Apply status filter if provided
+    if (status) {
+      console.log('[items.get.ts] Applying status filter:', status)
+      supabaseQuery = supabaseQuery.eq('status', status)
+    }
 
-  // Apply sorting
-  const sortOrder = sort === 'score' ? 'desc' : 'desc' // Both default to desc
-  supabaseQuery = supabaseQuery.order(sort, { ascending: false })
+    // Apply sorting
+    // Note: Supabase orders NULLs last by default for DESC order
+    console.log('[items.get.ts] Applying sort:', sort)
+    supabaseQuery = supabaseQuery.order(sort, { ascending: false })
 
-  // Apply pagination
-  const from = (page - 1) * pageSize
-  const to = from + pageSize - 1
-  supabaseQuery = supabaseQuery.range(from, to)
+    // Apply pagination
+    const from = (page - 1) * pageSize
+    const to = from + pageSize - 1
+    console.log('[items.get.ts] Applying pagination:', { from, to })
+    supabaseQuery = supabaseQuery.range(from, to)
 
-  // Execute query
-  const { data, error } = await supabaseQuery
+    // Execute query
+    console.log('[items.get.ts] Executing query...')
+    const { data, error } = await supabaseQuery
+    console.log('[items.get.ts] Query executed. Error:', error ? 'YES' : 'NO', 'Data count:', data?.length || 0)
 
-  if (error) {
+    if (error) {
+      const errorInfo = {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+        status,
+        sort,
+        page,
+        pageSize,
+        fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
+      }
+      console.error('Database error in items.get.ts:', errorInfo)
+      console.error('Full Supabase error object:', error)
+      throw createError({
+        statusCode: 500,
+        statusMessage: 'Database error',
+        data: { 
+          error: error.message || 'Unknown database error',
+          details: error.details || '',
+          hint: error.hint || '',
+          code: error.code || '',
+          fullError: JSON.stringify(error, Object.getOwnPropertyNames(error))
+        }
+      })
+    }
+
+    return {
+      ok: true,
+      data: data || [],
+      page,
+      pageSize
+    }
+  } catch (err: any) {
+    // Catch any unexpected errors
+    console.error('Unexpected error in items.get.ts:', err)
+    console.error('Error stack:', err.stack)
+    console.error('Full error:', JSON.stringify(err, Object.getOwnPropertyNames(err)))
+    
+    // If it's already a createError, re-throw it with enhanced data
+    if (err.statusCode && err.data) {
+      throw err
+    }
+    
     throw createError({
       statusCode: 500,
       statusMessage: 'Database error',
-      data: { error: error.message }
+      data: { 
+        error: err.message || 'Unknown error occurred',
+        originalError: err.toString(),
+        stack: err.stack,
+        fullError: JSON.stringify(err, Object.getOwnPropertyNames(err))
+      }
     })
-  }
-
-  return {
-    ok: true,
-    data: data || [],
-    page,
-    pageSize
   }
 })
