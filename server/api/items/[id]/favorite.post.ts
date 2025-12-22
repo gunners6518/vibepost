@@ -11,10 +11,10 @@ export default defineEventHandler(async (event) => {
 
   const supabase = getSupabaseAdmin(event)
 
-  // Update item status to 'used'
+  // Update item status to 'favorite'
   const { error } = await supabase
     .from('items')
-    .update({ status: 'used' })
+    .update({ status: 'favorite' })
     .eq('id', id)
 
   if (error) {

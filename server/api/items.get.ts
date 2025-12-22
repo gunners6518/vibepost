@@ -11,7 +11,7 @@ export default defineEventHandler(async (event) => {
   const sort = Array.isArray(query.sort) ? query.sort[0] : query.sort || 'published_at'
 
   // Validate status if provided
-  const validStatuses = ['new', 'drafted', 'used', 'skipped']
+  const validStatuses = ['new', 'drafted', 'favorite', 'skipped']
   if (status && !validStatuses.includes(status)) {
     throw createError({
       statusCode: 400,

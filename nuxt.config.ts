@@ -1,6 +1,7 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
 export default defineNuxtConfig({
   devtools: { enabled: true },
+
   runtimeConfig: {
     // Private keys (only available on server-side)
     cronSecret: process.env.CRON_SECRET || '',
@@ -11,11 +12,13 @@ export default defineNuxtConfig({
     typefullyApiKey: process.env.TYPEFULLY_API_KEY || '',
     typefullySocialSetId: process.env.TYPEFULLY_SOCIAL_SET_ID || ''
   },
+
   // Make sure runtimeConfig is properly typed
   nitro: {
     experimental: {
       wasm: true
     }
-  }
-})
+  },
 
+  modules: ["@nuxtjs/tailwindcss"]
+})

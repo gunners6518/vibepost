@@ -25,6 +25,7 @@
       </div>
     </nav>
     <NuxtPage />
+    <ToastContainer />
   </div>
 </template>
 
