@@ -66,28 +66,155 @@ export default defineEventHandler(async (event) => {
   const link = item.link || ''
   const contentSnippet = item.content_snippet || ''
 
-  // Prepare context for OpenAI
-  const context = `
-タイトル: ${title}
-リンク: ${link}
-内容: ${contentSnippet}
-`.trim()
+  // Helper function to validate and fix generated text
+  const validateAndFixText = async (text: string, link: string): Promise<string> => {
+    let validatedText = text.trim()
+    
+    // Check if text exceeds 300 characters
+    if (validatedText.length > 300) {
+      console.log(`[Draft API] Text exceeds 300 characters (${validatedText.length}), requesting rewrite...`)
+      const rewriteResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${config.openaiApiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: 'gpt-4o-mini',
+          messages: [
+            {
+              role: 'system',
+              content: 'あなたはX（旧Twitter）の投稿文を200〜240文字に短縮する専門家です。内容を保ちながら、簡潔にリライトしてください。'
+            },
+            {
+              role: 'user',
+              content: `以下の投稿文を200〜240文字に短縮してください。改行は維持してください。\n\n${validatedText}`
+            }
+          ],
+          temperature: 0.5,
+          max_tokens: 300
+        })
+      })
+      
+      if (rewriteResponse.ok) {
+        const rewriteData = await rewriteResponse.json()
+        const rewrittenText = rewriteData.choices?.[0]?.message?.content?.trim()
+        if (rewrittenText) {
+          validatedText = rewrittenText
+          console.log(`[Draft API] Text rewritten to ${validatedText.length} characters`)
+        }
+      }
+    }
+    
+    // Check for multiple URLs and keep only one at the end
+    const urlRegex = /https?:\/\/[^\s]+/g
+    const urls = validatedText.match(urlRegex) || []
+    
+    if (urls.length > 1) {
+      console.log(`[Draft API] Found ${urls.length} URLs, keeping only one at the end`)
+      // Remove all URLs first
+      let textWithoutUrls = validatedText
+      urls.forEach(url => {
+        textWithoutUrls = textWithoutUrls.replace(url, '').trim()
+      })
+      // Add link at the end if provided, otherwise keep the first URL
+      const finalUrl = link || urls[0]
+      validatedText = `${textWithoutUrls}\n\n${finalUrl}`.trim()
+    } else if (link && !validatedText.includes(link)) {
+      // Ensure link is included at the end if not present
+      validatedText = `${validatedText}\n\n${link}`
+    }
+    
+    return validatedText
+  }
+
+  // Helper function to get prompt for each draft type
+  const getPromptForType = (type: string, title: string, contentSnippet: string, link: string): string => {
+    const baseContext = `タイトル: ${title}\n内容: ${contentSnippet}\nリンク: ${link}`
+    
+    switch (type) {
+      case 'short':
+        return `${baseContext}
+
+以下の形式で投稿文を作成してください：
+1. 共感（技術者が共感できる問題提起）
+2. 結論（簡潔な要点）
+3. 1つのTips（実践的なアドバイス）
+4. 締めの質問（読者への問いかけ）
+
+文体：
+- 一人称は「僕」
+- 改行を多めに使用
+- 断定しすぎない（煽らない）
+- 200〜240文字目安
+- 専門用語は短く補足（例: INP=入力遅延の指標）
+- 最後は質問で終える（例: みんなはどうしてる？）
+- リンクは文末に1回だけ置く（URL単体で改行）
+- 誇張しない。未確認の断言は禁止
+- titleとcontent_snippetの内容を必ず踏まえる`
+      
+      case 'hook':
+        return `${baseContext}
+
+以下の形式で投稿文を作成してください：
+1. 逆張りor意外性のフック（常識を覆す視点）
+2. 理由（なぜそうなのか）
+3. 現場の例（具体的な体験談）
+4. 締め（読者への問いかけ）
+
+文体：
+- 一人称は「僕」
+- 改行を多めに使用
+- 断定しすぎない（煽らない）
+- 200〜240文字目安
+- 専門用語は短く補足（例: INP=入力遅延の指標）
+- 最後は質問で終える（例: みんなはどうしてる？）
+- リンクは文末に1回だけ置く（URL単体で改行）
+- 誇張しない。未確認の断言は禁止
+- titleとcontent_snippetの内容を必ず踏まえる`
+      
+      case 'checklist':
+        return `${baseContext}
+
+以下の形式で投稿文を作成してください：
+- 「〜の時の確認5つ」形式
+- 箇条書き5つ（簡潔に）
+- 各項目は改行で区切る
+- 最後に質問で締める
+
+文体：
+- 一人称は「僕」
+- 改行を多めに使用
+- 断定しすぎない（煽らない）
+- 200〜240文字目安
+- 専門用語は短く補足（例: INP=入力遅延の指標）
+- 最後は質問で終える（例: みんなはどうしてる？）
+- リンクは文末に1回だけ置く（URL単体で改行）
+- 誇張しない。未確認の断言は禁止
+- titleとcontent_snippetの内容を必ず踏まえる`
+      
+      default:
+        return baseContext
+    }
+  }
 
   // Generate 3 types of drafts using OpenAI
   const draftTypes = [
-    { type: 'short', description: '短い投稿文（200文字程度）' },
-    { type: 'quote', description: '引用形式の投稿文（200文字程度）' },
-    { type: 'thread_hook', description: 'スレッドの冒頭に使える投稿文（200文字程度）' }
+    { type: 'short', name: 'short' },
+    { type: 'hook', name: 'hook' },
+    { type: 'checklist', name: 'checklist' }
   ]
 
   const generatedDrafts: Array<{ type: string; text: string }> = []
 
   console.log('[Draft API] Starting OpenAI API calls...')
-  for (const { type, description } of draftTypes) {
+  for (const { type } of draftTypes) {
     try {
       console.log(`[Draft API] Generating draft type: ${type}`)
+      
+      const prompt = getPromptForType(type, title, contentSnippet, link)
+      
       // Call OpenAI API
-      // Endpoint: POST https://api.openai.com/v1/chat/completions
       const openaiResponse = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -99,15 +226,15 @@ export default defineEventHandler(async (event) => {
           messages: [
             {
               role: 'system',
-              content: 'あなたはX（旧Twitter）の投稿文を作成する専門家です。200文字程度の投稿文を作成してください。改行を多めに使い、断定しすぎず、初心者にも伝わる表現を心がけてください。一人称は「僕」を使ってください。'
+              content: 'あなたはX（旧Twitter）の投稿文を作成する専門家です。技術者に刺さって、いいね/保存/リプが増える投稿を生成してください。'
             },
             {
               role: 'user',
-              content: `以下の記事について、${description}を作成してください。\n\n${context}\n\nリンクは末尾に含めてください。`
+              content: prompt
             }
           ],
           temperature: 0.7,
-          max_tokens: 300
+          max_tokens: 400
         })
       })
 
@@ -123,18 +250,14 @@ export default defineEventHandler(async (event) => {
         throw new Error('OpenAI API returned empty response')
       }
 
-      // Ensure link is included at the end
-      let finalText = generatedText
-      if (link && !finalText.includes(link)) {
-        finalText = `${finalText}\n\n${link}`
-      }
+      // Validate and fix the generated text
+      const validatedText = await validateAndFixText(generatedText, link)
 
-      generatedDrafts.push({ type, text: finalText })
-      console.log(`[Draft API] Successfully generated draft type: ${type}`)
+      generatedDrafts.push({ type, text: validatedText })
+      console.log(`[Draft API] Successfully generated draft type: ${type} (${validatedText.length} chars)`)
     } catch (error: any) {
       console.error(`[Draft API] Error generating draft for type ${type}:`, error.message || error)
       // Continue with other types even if one fails
-      // You might want to handle this differently based on requirements
     }
   }
 

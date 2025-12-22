@@ -11,7 +11,7 @@ BEGIN
     AND column_name = 'type'
   ) THEN
     ALTER TABLE public.drafts 
-    ADD COLUMN type text CHECK (type IN ('short', 'quote', 'thread_hook'));
+    ADD COLUMN type text CHECK (type IN ('short', 'hook', 'checklist'));
   END IF;
 END $$;
 
