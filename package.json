@@ -1,26 +1,25 @@
 {
   "name": "vibepost",
-  "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
+    "build": "nuxt build",
+    "dev": "nuxt dev",
+    "generate": "nuxt generate",
+    "preview": "nuxt preview",
+    "postinstall": "nuxt prepare"
   },
   "dependencies": {
-    "next": "16.1.0",
-    "react": "19.2.3",
-    "react-dom": "19.2.3"
+    "@nuxt/devtools": "latest",
+    "@supabase/supabase-js": "^2.39.0",
+    "nuxt": "^3.13.0",
+    "rss-parser": "^3.13.0",
+    "vue": "latest"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.1.0",
-    "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "latest"
+  },
+  "resolutions": {
+    "vite": "^6.0.0"
   }
 }
