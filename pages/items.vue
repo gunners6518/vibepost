@@ -38,6 +38,34 @@
               {{ fetchingRss ? '取得中...' : 'Fetch RSS' }}
             </button>
             <button
+              @click="rescoreItems"
+              :disabled="rescorings"
+              class="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-purple-600 hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg
+                v-if="rescorings"
+                class="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+              {{ rescorings ? '再計算中...' : '再スコアリング' }}
+            </button>
+            <button
               @click="fetchItems"
               :disabled="loading"
               class="inline-flex items-center px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -92,8 +120,8 @@
               @change="fetchItems"
               class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
             >
-              <option value="published_at">公開日時</option>
               <option value="score">スコア</option>
+              <option value="published_at">公開日時</option>
             </select>
           </div>
           <div>
@@ -105,6 +133,17 @@
               placeholder="タイトルで検索..."
               class="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
             />
+          </div>
+          <div>
+            <label class="flex items-center space-x-2">
+              <input
+                v-model="filters.showLowScore"
+                @change="fetchItems"
+                type="checkbox"
+                class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+              />
+              <span class="text-sm font-medium text-gray-700">Show low score (score &lt; 60)</span>
+            </label>
           </div>
         </div>
       </div>
@@ -305,6 +344,7 @@ interface Item {
 const items = ref<Item[]>([])
 const loading = ref(false)
 const fetchingRss = ref(false)
+const rescorings = ref(false)
 const error = ref<string | null>(null)
 const page = ref(1)
 const pageSize = ref(20)
@@ -313,8 +353,9 @@ const { success, error: showError } = useToast()
 
 const filters = ref({
   status: 'new',
-  sort: 'published_at',
-  search: ''
+  sort: 'score',
+  search: '',
+  showLowScore: false
 })
 
 // Debounced search
@@ -351,6 +392,9 @@ const fetchItems = async () => {
     queryParams.append('sort', filters.value.sort)
     queryParams.append('page', page.value.toString())
     queryParams.append('pageSize', pageSize.value.toString())
+    if (filters.value.showLowScore) {
+      queryParams.append('showLowScore', 'true')
+    }
     
     const response = await $fetch<{ ok: boolean; data: Item[]; page: number; pageSize: number }>(
       `/api/items?${queryParams.toString()}`
@@ -458,6 +502,30 @@ const fetchRss = async () => {
     console.error('Error fetching RSS:', err)
   } finally {
     fetchingRss.value = false
+  }
+}
+
+const rescoreItems = async () => {
+  rescorings.value = true
+  error.value = null
+  
+  try {
+    const response = await $fetch<{ ok: boolean; rescored: number; errors: number; total: number }>(
+      '/api/items/rescore?limit=500&secret=vibepost-local',
+      { method: 'POST' }
+    )
+    
+    if (response.ok) {
+      success(`${response.rescored}件のアイテムのスコアを再計算しました（エラー: ${response.errors}件）`)
+      await fetchItems()
+    }
+  } catch (err: any) {
+    const errorMessage = err.data?.error || err.message || '再スコアリングに失敗しました'
+    error.value = errorMessage
+    showError(errorMessage)
+    console.error('Error rescoring items:', err)
+  } finally {
+    rescorings.value = false
   }
 }
 

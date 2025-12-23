@@ -8,7 +8,8 @@ export default defineEventHandler(async (event) => {
     parseInt(Array.isArray(query.pageSize) ? query.pageSize[0] : query.pageSize || '20', 10),
     50
   )
-  const sort = Array.isArray(query.sort) ? query.sort[0] : query.sort || 'published_at'
+  const sort = Array.isArray(query.sort) ? query.sort[0] : query.sort || 'score'
+  const showLowScore = query.showLowScore === 'true' || query.showLowScore === true
 
   // Validate status if provided
   const validStatuses = ['new', 'drafted', 'favorite', 'skipped']
@@ -67,6 +68,12 @@ export default defineEventHandler(async (event) => {
     if (status) {
       console.log('[items.get.ts] Applying status filter:', status)
       supabaseQuery = supabaseQuery.eq('status', status)
+    }
+
+    // Apply score filter (default: only show score >= 60)
+    if (!showLowScore) {
+      console.log('[items.get.ts] Applying score filter: >= 60')
+      supabaseQuery = supabaseQuery.gte('score', 60)
     }
 
     // Apply sorting

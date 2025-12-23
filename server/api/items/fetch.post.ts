@@ -1,4 +1,5 @@
 import Parser from 'rss-parser'
+import { calculateScore, buildPreferenceDictionary } from '~/server/utils/scoring'
 
 export default defineEventHandler(async (event) => {
   const supabase = getSupabaseAdmin(event)
@@ -26,6 +27,39 @@ export default defineEventHandler(async (event) => {
 
   const parser = new Parser()
   let totalInserted = 0
+
+  // Get preference dictionary from recent actions for scoring
+  // First, get recent actions
+  const { data: recentActions, error: actionsError } = await supabase
+    .from('item_actions')
+    .select('item_id, action')
+    .order('created_at', { ascending: false })
+    .limit(200)
+
+  let preferenceDict = new Map<string, number>()
+  
+  if (recentActions && recentActions.length > 0) {
+    // Get item details for these actions
+    const itemIds = recentActions.map(a => a.item_id)
+    const { data: itemsData } = await supabase
+      .from('items')
+      .select('id, title, content_snippet')
+      .in('id', itemIds)
+
+    // Map items by id for quick lookup
+    const itemsMap = new Map((itemsData || []).map(item => [item.id, item]))
+
+    // Build actions with item data
+    const actionsForScoring = recentActions
+      .map(action => ({
+        item_id: action.item_id,
+        action: action.action,
+        item: itemsMap.get(action.item_id)
+      }))
+      .filter(action => action.item) // Only include actions with item data
+
+    preferenceDict = buildPreferenceDictionary(actionsForScoring)
+  }
 
   // Process each source
   for (const source of sources) {
@@ -76,9 +110,15 @@ export default defineEventHandler(async (event) => {
       // Insert items one by one to handle duplicates gracefully
       // (Supabase insert fails entirely if any item violates unique constraint)
       for (const item of itemsToInsert) {
+        // Calculate score before insertion
+        const score = calculateScore(item, preferenceDict)
+        
         const { data, error } = await supabase
           .from('items')
-          .insert(item)
+          .insert({
+            ...item,
+            score
+          })
           .select()
           .single()
 
