@@ -26,16 +26,22 @@ export default defineEventHandler(async (event) => {
   }
 
   // Log action to item_actions for preference learning
-  await supabase
-    .from('item_actions')
-    .insert({
-      item_id: id,
-      action: 'read_later'
-    })
-    .catch(err => {
+  try {
+    const { error: actionError } = await supabase
+      .from('item_actions')
+      .insert({
+        item_id: id,
+        action: 'read_later'
+      })
+    
+    if (actionError) {
       // Log but don't fail if action logging fails
-      console.error('[Favorite API] Failed to log action:', err)
-    })
+      console.error('[Favorite API] Failed to log action:', actionError)
+    }
+  } catch (err) {
+    // Log but don't fail if action logging fails
+    console.error('[Favorite API] Failed to log action:', err)
+  }
 
   // Recalculate score for this item based on updated preferences
   await recalculateItemScore(supabase, id)

@@ -276,8 +276,8 @@ export default defineEventHandler(async (event) => {
   console.log('[Draft API] Saving drafts to database...')
   const draftsToInsert = generatedDrafts.map(draft => ({
     item_id: id,
-    draft_type: draft.type, // Use draft_type to match existing table schema
-    type: draft.type, // Also set type column
+    draft_type: draft.type, // draft_type column (enum type)
+    type: draft.type, // type column (text with check constraint)
     text: draft.text,
     status: 'pending'
   }))
@@ -417,20 +417,26 @@ export default defineEventHandler(async (event) => {
   console.log('[Draft API] Item status updated successfully')
 
   // Log action to item_actions for preference learning
-  await supabase
-    .from('item_actions')
-    .insert({
-      item_id: id,
-      action: 'drafted',
-      meta: {
-        draft_count: insertedDrafts?.length || 0,
-        typefully_count: typefullySuccessCount
-      }
-    })
-    .catch(err => {
+  try {
+    const { error: actionError } = await supabase
+      .from('item_actions')
+      .insert({
+        item_id: id,
+        action: 'drafted',
+        meta: {
+          draft_count: insertedDrafts?.length || 0,
+          typefully_count: typefullySuccessCount
+        }
+      })
+    
+    if (actionError) {
       // Log but don't fail if action logging fails
-      console.error('[Draft API] Failed to log action:', err)
-    })
+      console.error('[Draft API] Failed to log action:', actionError)
+    }
+  } catch (err) {
+    // Log but don't fail if action logging fails
+    console.error('[Draft API] Failed to log action:', err)
+  }
 
   // Recalculate score for this item based on updated preferences
   await recalculateItemScore(supabase, id)

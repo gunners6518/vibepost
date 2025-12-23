@@ -148,13 +148,6 @@
         </div>
       </div>
 
-      <!-- Error Message -->
-      <div
-        v-if="error"
-        class="mb-6 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-lg"
-      >
-        {{ error }}
-      </div>
 
       <!-- Table Card -->
       <div class="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
@@ -345,7 +338,6 @@ const items = ref<Item[]>([])
 const loading = ref(false)
 const fetchingRss = ref(false)
 const rescorings = ref(false)
-const error = ref<string | null>(null)
 const page = ref(1)
 const pageSize = ref(20)
 const actionLoading = ref<Record<string, boolean>>({})
@@ -382,7 +374,6 @@ const filteredItems = computed(() => {
 
 const fetchItems = async () => {
   loading.value = true
-  error.value = null
   
   try {
     const queryParams = new URLSearchParams()
@@ -427,7 +418,6 @@ const fetchItems = async () => {
       fullErrorMessage += `\n\n詳細情報: ${JSON.stringify(errorData, null, 2)}`
     }
     
-    error.value = fullErrorMessage
     showError(fullErrorMessage)
     console.error('Error fetching items:', {
       message: err.message,
@@ -444,6 +434,14 @@ const handleAction = async (action: 'draft' | 'skip' | 'favorite', itemId: strin
   actionLoading.value[itemId] = true
   
   try {
+    // Get the expected status after the action
+    const statusMap: Record<string, string> = {
+      draft: 'drafted',
+      skip: 'skipped',
+      favorite: 'favorite'
+    }
+    const expectedStatus = statusMap[action]
+    
     if (action === 'draft') {
       const response = await $fetch<{ ok: boolean; created?: number; typefully?: number }>(
         `/api/items/${itemId}/${action}`,
@@ -454,7 +452,17 @@ const handleAction = async (action: 'draft' | 'skip' | 'favorite', itemId: strin
         const created = response.created || 0
         const typefully = response.typefully || 0
         success(`下書きを作成しました。生成数: ${created}件、Typefully作成数: ${typefully}件`)
-        await fetchItems()
+        
+        // Remove item from list if current filter doesn't match the new status
+        if (filters.value.status !== expectedStatus) {
+          items.value = items.value.filter(item => item.id !== itemId)
+        } else {
+          // Update item status in the list
+          const itemIndex = items.value.findIndex(item => item.id === itemId)
+          if (itemIndex !== -1) {
+            items.value[itemIndex].status = expectedStatus
+          }
+        }
       }
     } else {
       const response = await $fetch<{ ok: boolean }>(
@@ -468,12 +476,25 @@ const handleAction = async (action: 'draft' | 'skip' | 'favorite', itemId: strin
           favorite: 'あとで読む'
         }
         success(`${actionLabels[action]}に設定しました`)
-        await fetchItems()
+        
+        // Remove item from list if current filter doesn't match the new status
+        console.log('[Items] Action:', action, 'Expected status:', expectedStatus, 'Current filter:', filters.value.status)
+        if (filters.value.status !== expectedStatus) {
+          const beforeCount = items.value.length
+          items.value = items.value.filter(item => item.id !== itemId)
+          console.log('[Items] Removed item from list. Before:', beforeCount, 'After:', items.value.length)
+        } else {
+          // Update item status in the list
+          const itemIndex = items.value.findIndex(item => item.id === itemId)
+          if (itemIndex !== -1) {
+            items.value[itemIndex].status = expectedStatus
+            console.log('[Items] Updated item status in list')
+          }
+        }
       }
     }
   } catch (err: any) {
     const errorMessage = err.data?.error || err.data?.message || err.message || `Failed to ${action} item`
-    error.value = errorMessage
     showError(errorMessage)
     console.error(`Error ${action}ing item:`, err)
   } finally {
@@ -483,7 +504,6 @@ const handleAction = async (action: 'draft' | 'skip' | 'favorite', itemId: strin
 
 const fetchRss = async () => {
   fetchingRss.value = true
-  error.value = null
   
   try {
     const response = await $fetch<{ ok: boolean; inserted: number }>(
@@ -497,7 +517,6 @@ const fetchRss = async () => {
     }
   } catch (err: any) {
     const errorMessage = err.message || 'RSS取得に失敗しました'
-    error.value = errorMessage
     showError(errorMessage)
     console.error('Error fetching RSS:', err)
   } finally {
@@ -507,7 +526,6 @@ const fetchRss = async () => {
 
 const rescoreItems = async () => {
   rescorings.value = true
-  error.value = null
   
   try {
     const response = await $fetch<{ ok: boolean; rescored: number; errors: number; total: number }>(
@@ -521,7 +539,6 @@ const rescoreItems = async () => {
     }
   } catch (err: any) {
     const errorMessage = err.data?.error || err.message || '再スコアリングに失敗しました'
-    error.value = errorMessage
     showError(errorMessage)
     console.error('Error rescoring items:', err)
   } finally {
