@@ -30,3 +30,7 @@ Locally preview production build:
 yarn preview
 ```
 
+## Deployment
+
+For Vercel deployment instructions, see [docs/deploy.md](./docs/deploy.md).
+
