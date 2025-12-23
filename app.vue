@@ -21,6 +21,13 @@
           >
             RSS登録
           </NuxtLink>
+          <NuxtLink
+            to="/guide"
+            style="padding: 15px 20px; text-decoration: none; color: #333; border-bottom: 2px solid transparent; transition: all 0.2s;"
+            active-class="active"
+          >
+            運用ルール
+          </NuxtLink>
         </div>
       </div>
     </nav>
